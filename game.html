@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waste Management - Simulation 1</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #1a202c;
+            font-family: 'Arial', sans-serif;
+        }
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
+        }
+        #canvas {
+            display: block;
+            background-color: #2d3748;
+        }
+        #interaction-box {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            z-index: 10;
+            max-width: 600px;
+            text-align: center;
+        }
+        #badge-notification {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translate(-50%);
+            background-color: #48bb78;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            z-index: 10;
+        }
+        #end-screen {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            text-align: center;
+            flex-direction: column;
+            justify-content: center;
+            z-index: 20;
+        }
+        #game-over {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background-color: rgba(255, 0, 0, 0.8);
+            color: white;
+            text-align: center;
+            flex-direction: column;
+            justify-content: center;
+            z-index: 20;
+        }
+        #choices-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .choice-button {
+            background-color: #4a5568;
+            color: white;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            text-align: left;
+        }
+        .choice-button:hover {
+            background-color: #2d3748;
+        }
+        .bg-green-500 {
+            background-color: #48bb78;
+        }
+        .hover\:bg-green-600:hover {
+            background-color: #38a169;
+        }
+        .text-white {
+            color: #ffffff;
+        }
+        .px-4 {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        .py-2 {
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+        }
+        .rounded {
+            border-radius: 0.25rem;
+        }
+        .w-full {
+            width: 100%;
+        }
+        .p-2 {
+            padding: 0.5rem;
+        }
+        .mb-4 {
+            margin-bottom: 1rem;
+        }
+        .text-4xl {
+            font-size: 2.25rem;
+            line-height: 2.5rem;
+        }
+        .text-2xl {
+            font-size: 1.5rem;
+            line-height: 2rem;
+        }
+        .text-xl {
+            font-size: 1.25rem;
+            line-height: 1.75rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container" class="relative">
+        <canvas id="canvas" width="800" height="400"></canvas>
+        <div id="interaction-box" class="text-center">
+            <p id="problem-description" class="mb-4"></p>
+            <p id="tries-remaining" class="mb-4"></p>
+            <input id="solution-input" type="text" class="w-full p-2 rounded text-black mb-4" placeholder="Enter your solution...">
+            <div id="choices-container" class="mb-4"></div>
+            <button id="submit-solution" class="mt-4 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">Submit</button>
+        </div>
+        <div id="badge-notification">Suddhi Badge Earned!</div>
+        <div id="end-screen">
+            <h1 class="text-4xl mb-4">Level Complete!</h1>
+            <p id="seeds-earned" class="text-2xl mb-4"></p>
+            <p class="text-xl">Next Level: Air Pollution - Simulation 2</p>
+        </div>
+        <div id="game-over">
+            <h1 class="text-4xl mb-4">Game Over!</h1>
+            <p class="text-xl">Your health reached zero. Refresh to restart.</p>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const interactionBox = document.getElementById('interaction-box');
+        const problemDescription = document.getElementById('problem-description');
+        const triesRemaining = document.getElementById('tries-remaining');
+        const solutionInput = document.getElementById('solution-input');
+        const choicesContainer = document.getElementById('choices-container');
+        const submitButton = document.getElementById('submit-solution');
+        const badgeNotification = document.getElementById('badge-notification');
+        const endScreen = document.getElementById('end-screen');
+        const seedsEarned = document.getElementById('seeds-earned');
+        const gameOver = document.getElementById('game-over');
+
+        // Game state
+        let player = {
+            x: 50,
+            y: 300,
+            width: 80,            // increased sprite display size (was 64)
+            height: 128,          // increased sprite display size (was 96)
+            speed: 3.5,
+            jumping: false,
+            doubleJumpAvailable: true,
+            jumpPower: 12,
+            velocityY: 0,
+            animation: 'idle',
+            health: 3,
+            hasWeapon: false,
+            facingRight: true,
+            isDodging: false,
+            lastDodgeTime: 0,
+            lastPushTime: 0,
+            lastJumpOnBotTime: 0,
+            invulnerable: false
+        };
+        let seeds = 0;
+        let solvedProblems = new Set();
+        let currentProblem = null;
+        let cameraX = 0;
+        let tries = 2;
+        let levelCompleted = false;
+        const levelWidth = 10000;
+        const groundY = 340;
+        let projectiles = [];
+        let lastShotTime = 0;
+        const shotCooldown = 500;
+        const dodgeCooldown = 1000;
+        const pushCooldown = 1500;
+        const dodgeDuration = 300;
+        let lastFrameTs = performance.now();
+
+        // Background image
+        const background = {
+            image: new Image(),
+            loaded: false,
+            parallax: 0.3
+        };
+        background.image.src = 'assets/orig.png';
+        background.image.onload = () => { background.loaded = true; };
+        background.image.onerror = () => console.error('Failed to load background at', background.image.src);
+
+        // Obstacle images
+        const obstacleImages = {
+            plastic_waste: { image: new Image(), loaded: false },
+            food_waste: { image: new Image(), loaded: false },
+            e_waste: { image: new Image(), loaded: false }
+        };
+        // Track transparent padding to align the visible bottom to ground
+        let plasticTrim = { top: 0, bottom: 0 };
+        let foodTrim = { top: 0, bottom: 0 };
+        let eWasteTrim = { top: 0, bottom: 0 };
+        function analyzeTransparentPadding(image) {
+            const nW = image.naturalWidth || image.width;
+            const nH = image.naturalHeight || image.height;
+            const off = document.createElement('canvas');
+            off.width = nW; off.height = nH;
+            const octx = off.getContext('2d', { willReadFrequently: true });
+            octx.imageSmoothingEnabled = false;
+            octx.clearRect(0, 0, nW, nH);
+            octx.drawImage(image, 0, 0);
+            const data = octx.getImageData(0, 0, nW, nH).data;
+            const isTransparentRow = (y) => {
+                for (let x = 0; x < nW; x++) {
+                    const idx = (y * nW + x) * 4 + 3;
+                    if (data[idx] !== 0) return false;
+                }
+                return true;
+            };
+            let top = 0, bottom = 0;
+            for (let y = 0; y < nH; y++) { if (isTransparentRow(y)) top++; else break; }
+            for (let y = nH - 1; y >= 0; y--) { if (isTransparentRow(y)) bottom++; else break; }
+            return { top, bottom };
+        }
+        obstacleImages.plastic_waste.image.src = 'assets/make-me-a-pile-of-garbage-containing-everything-plastic__31878052.png';
+        obstacleImages.plastic_waste.image.onload = () => { 
+            obstacleImages.plastic_waste.loaded = true; 
+            plasticTrim = analyzeTransparentPadding(obstacleImages.plastic_waste.image);
+            // Recompute size now that we know the image aspect
+            resizeGarbageRelativeToPlayer();
+        };
+        obstacleImages.plastic_waste.image.onerror = () => console.error('Failed to load obstacle sprite');
+        // Food waste (2nd obstacle)
+        obstacleImages.food_waste.image.src = 'assets/food-waste-a-huge-pile-of-rotten-food__841e011d.png';
+        obstacleImages.food_waste.image.onload = () => { 
+            obstacleImages.food_waste.loaded = true; 
+            foodTrim = analyzeTransparentPadding(obstacleImages.food_waste.image);
+        };
+        obstacleImages.food_waste.image.onerror = () => console.error('Failed to load food obstacle sprite');
+        // E-waste (3rd obstacle)
+        obstacleImages.e_waste.image.src = 'assets/e-waste-huge-pile-of-ewaste-like-batteries-laptops-phones-electronics__f9cd8130.png';
+        obstacleImages.e_waste.image.onload = () => { 
+            obstacleImages.e_waste.loaded = true; 
+            eWasteTrim = analyzeTransparentPadding(obstacleImages.e_waste.image);
+        };
+        obstacleImages.e_waste.image.onerror = () => console.error('Failed to load e-waste obstacle sprite');
+
+        // Sprite animation config for separate idle/walk strips
+        const sprite = {
+            ready: false,
+            frameIndex: 0,
+            frameTimer: 0,
+            frameInterval: 120,
+            animations: {
+                idle: {
+                    image: new Image(),
+                    frames: 9,      // Idle strip appears to have 9 frames (128px each)
+                    speed: 160
+                },
+                run: {
+                    image: new Image(),
+                    frames: 12,     // Walk strip appears to have 12 frames (128px each)
+                    speed: 80
+                }
+            },
+            loaded: { idle: false, run: false }
+        };
+        // TODO: Replace with your actual asset paths for the provided strips
+        sprite.animations.idle.image.src = 'assets/Idle.png';
+        sprite.animations.run.image.src = 'assets/Walk.png';
+        // Analyze a sprite strip to detect frame boundaries using transparent separators
+        function analyzeStrip(image) {
+            const nW = image.naturalWidth || image.width;
+            const nH = image.naturalHeight || image.height;
+            const off = document.createElement('canvas');
+            off.width = nW; off.height = nH;
+            const octx = off.getContext('2d', { willReadFrequently: true });
+            octx.imageSmoothingEnabled = false;
+            octx.clearRect(0, 0, nW, nH);
+            octx.drawImage(image, 0, 0);
+            const data = octx.getImageData(0, 0, nW, nH).data;
+            const isTransparentCol = (x) => {
+                for (let y = 0; y < nH; y++) {
+                    const idx = (y * nW + x) * 4 + 3; // alpha
+                    if (data[idx] !== 0) return false;
+                }
+                return true;
+            };
+            // Find continuous opaque runs separated by fully transparent columns
+            const rects = [];
+            let inRun = false;
+            let runStart = 0;
+            for (let x = 0; x < nW; x++) {
+                const transparent = isTransparentCol(x);
+                if (!transparent && !inRun) {
+                    inRun = true; runStart = x;
+                } else if (transparent && inRun) {
+                    rects.push({ x: runStart, y: 0, w: x - runStart, h: nH });
+                    inRun = false;
+                }
+            }
+            if (inRun) rects.push({ x: runStart, y: 0, w: nW - runStart, h: nH });
+            // Filter out very small rects (noise)
+            const filtered = rects.filter(r => r.w >= 4);
+            if (filtered.length >= 2) {
+                // Normalize widths by median to reduce slight padding differences
+                const widths = filtered.map(r => r.w).sort((a,b)=>a-b);
+                const median = widths[Math.floor(widths.length/2)];
+                const norm = filtered.map(r => ({ x: r.x, y: 0, w: median, h: nH }));
+                return { rects: norm, frameWidth: median, frameHeight: nH };
+            }
+            return { rects: [], frameWidth: 0, frameHeight: nH };
+        }
+
+        // Heuristic auto-config for frame counts and display sizing
+        function autoConfigureAnimation(kind) {
+            const anim = sprite.animations[kind];
+            const img = anim.image;
+            const nW = img.naturalWidth || img.width || 0;
+            const nH = img.naturalHeight || img.height || 0;
+            if (!nW || !nH) return;
+            // First try transparent separator based detection
+            const analysis = analyzeStrip(img);
+            if (analysis.rects.length > 0) {
+                anim.rects = analysis.rects;
+                anim.frames = analysis.rects.length;
+                anim.frameWidth = analysis.frameWidth;
+                anim.frameHeight = analysis.frameHeight;
+                return;
+            }
+            // Preferred candidates by kind
+            const preferred = kind === 'run' ? [12, 10, 8, 11, 9] : [9, 8, 6, 10];
+            // Build candidate list of divisors 2..20 of nW plus preferred
+            const divisors = [];
+            for (let f = 2; f <= 20; f++) if (nW % f === 0) divisors.push(f);
+            const candidates = [...new Set([...preferred.filter(f => nW % f === 0), ...divisors])];
+            // Choose by aspect heuristic: frameWidth/frameHeight near 0.6 (tall character)
+            let best = null;
+            let bestScore = Infinity;
+            candidates.forEach(frames => {
+                const fw = nW / frames;
+                const aspect = fw / nH;
+                if (fw < 24 || fw > 256) return;
+                if (aspect < 0.35 || aspect > 1.2) return;
+                const score = Math.abs(aspect - 0.6);
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = { frames, fw, fh: nH };
+                }
+            });
+            if (best) {
+                anim.frames = best.frames;
+                anim.frameWidth = Math.round(best.fw);
+                anim.frameHeight = best.fh;
+            } else {
+                // Fallback: keep existing frames, compute widths
+                anim.frameWidth = Math.round(nW / Math.max(1, anim.frames));
+                anim.frameHeight = nH;
+            }
+        }
+
+        function resizePlayerForSprite() {
+            // Use run size if available, else idle
+            const base = sprite.loaded.run ? sprite.animations.run : sprite.animations.idle;
+            const fw = base.frameWidth || (base.image.naturalWidth && base.frames ? Math.round(base.image.naturalWidth / base.frames) : 64);
+            const fh = base.frameHeight || base.image.naturalHeight || 96;
+            const targetH = 128; // display height
+            player.height = targetH;
+            player.width = Math.max(32, Math.round(targetH * (fw / fh)));
+        }
+
+        function onSpriteLoaded(kind) {
+            sprite.loaded[kind] = true;
+            autoConfigureAnimation(kind);
+            resizePlayerForSprite();
+            // Ensure garbage scales relative to player size
+            resizeGarbageRelativeToPlayer();
+            // Ready as soon as at least one strip loads
+            sprite.ready = sprite.loaded.idle || sprite.loaded.run;
+        }
+        sprite.animations.idle.image.onload = () => { console.log('Idle sprite loaded', sprite.animations.idle.image.naturalWidth, sprite.animations.idle.image.naturalHeight); onSpriteLoaded('idle'); };
+        sprite.animations.run.image.onload = () => { console.log('Walk sprite loaded', sprite.animations.run.image.naturalWidth, sprite.animations.run.image.naturalHeight); onSpriteLoaded('run'); };
+        sprite.animations.idle.image.onerror = () => console.error('Failed to load idle sprite at', sprite.animations.idle.image.src);
+        sprite.animations.run.image.onerror = () => console.error('Failed to load walk sprite at', sprite.animations.run.image.src);
+
+        // Bot sprites (Owlet Monster)
+        const botSprite = {
+            idle: {
+                image: new Image(),
+                frames: 4,
+                frameWidth: 0,
+                frameHeight: 0,
+                speed: 200,
+                loaded: false
+            },
+            walk: {
+                image: new Image(),
+                frames: 6,
+                frameWidth: 0,
+                frameHeight: 0,
+                speed: 120,
+                loaded: false
+            },
+            attack: {
+                image: new Image(),
+                frames: 6,
+                frameWidth: 0,
+                frameHeight: 0,
+                speed: 100,
+                loaded: false
+            },
+            frameIndex: 0,
+            frameTimer: 0
+        };
+        botSprite.idle.image.src = 'assets/Owlet_Monster_Idle_4.png';
+        botSprite.idle.image.onload = () => {
+            const img = botSprite.idle.image;
+            botSprite.idle.frameWidth = Math.round((img.naturalWidth || img.width) / botSprite.idle.frames);
+            botSprite.idle.frameHeight = img.naturalHeight || img.height;
+            botSprite.idle.loaded = true;
+        };
+        botSprite.idle.image.onerror = () => console.error('Failed to load bot idle sprite');
+        botSprite.walk.image.src = 'assets/Owlet_Monster_Walk_6.png';
+        botSprite.walk.image.onload = () => {
+            const img = botSprite.walk.image;
+            botSprite.walk.frameWidth = Math.round((img.naturalWidth || img.width) / botSprite.walk.frames);
+            botSprite.walk.frameHeight = img.naturalHeight || img.height;
+            botSprite.walk.loaded = true;
+        };
+        botSprite.walk.image.onerror = () => console.error('Failed to load bot walk sprite');
+        botSprite.attack.image.src = 'assets/Owlet_Monster_Attack2_6.png';
+        botSprite.attack.image.onload = () => {
+            const img = botSprite.attack.image;
+            botSprite.attack.frameWidth = Math.round((img.naturalWidth || img.width) / botSprite.attack.frames);
+            botSprite.attack.frameHeight = img.naturalHeight || img.height;
+            botSprite.attack.loaded = true;
+        };
+        botSprite.attack.image.onerror = () => console.error('Failed to load bot attack sprite');
+
+        // Waste objects
+        const problems = [
+            {
+                id: 'plastic_waste',
+                x: 300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'A pile of plastic bottles blocks the holographic park. What’s the best way to manage plastic waste?',
+                refinements: ['reduce', 'reuse', 'recycle', 'ban single-use plastics'],
+                solutionVisual: () => {},
+                type: 'text'
+            },
+            {
+                id: 'food_waste',
+                x: 1300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Rotten food materializes inside the simulation. How should food waste be handled?',
+                refinements: ['composting', 'food sharing', 'bio-gas plants'],
+                solutionVisual: () => {},
+                type: 'text'
+            },
+            {
+                id: 'e_waste',
+                x: 2300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Broken electronics glitch into the hologram. Choose the best way to handle e-waste:',
+                refinements: ['recycling centers', 'refurbishing', 'collection drives'],
+                solutionVisual: () => {},
+                type: 'choice',
+                choices: [
+                    {text: 'Throw in regular trash', score: 0},
+                    {text: 'Donate to charity', score: 1},
+                    {text: 'Take to certified e-waste recycling center', score: 2},
+                    {text: 'Burn it', score: 0}
+                ]
+            },
+            {
+                id: 'paper_waste',
+                x: 3300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Piles of paper and cardboard are scattered around. How to manage paper waste?',
+                refinements: ['recycle', 'reuse', 'reduce'],
+                solutionVisual: () => {},
+                type: 'text'
+            },
+            {
+                id: 'glass_waste',
+                x: 4300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Broken glass shards litter the area. What’s the best way to handle glass waste?',
+                refinements: ['recycle', 'reuse'],
+                solutionVisual: () => {},
+                type: 'text'
+            },
+            {
+                id: 'hazardous_waste',
+                x: 5300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Toxic chemicals and batteries are leaking. Choose the best way to dispose of hazardous waste:',
+                refinements: ['special collection', 'recycling centers', 'proper disposal'],
+                solutionVisual: () => {},
+                type: 'choice',
+                choices: [
+                    {text: 'Pour down the drain', score: 0},
+                    {text: 'Store in garage', score: 1},
+                    {text: 'Use special hazardous waste collection services', score: 2},
+                    {text: 'Mix with regular waste', score: 0}
+                ]
+            },
+            {
+                id: 'metal_waste',
+                x: 6300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Scrap metal is rusting in the park. How to manage metal waste?',
+                refinements: ['recycle', 'reuse', 'scrap'],
+                solutionVisual: () => {},
+                type: 'text'
+            },
+            {
+                id: 'textile_waste',
+                x: 7300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Old clothes are piled up. How to manage textile waste?',
+                refinements: ['recycle', 'donate', 'upcycle'],
+                solutionVisual: () => {},
+                type: 'text'
+            },
+            {
+                id: 'organic_waste',
+                x: 8300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Plant waste is decomposing. How to handle organic waste?',
+                refinements: ['compost', 'mulch', 'biofuel'],
+                solutionVisual: () => {},
+                type: 'text'
+            },
+            {
+                id: 'medical_waste',
+                x: 9300,
+                y: groundY - 50,
+                width: 50,
+                height: 50,
+                description: 'Medical waste is hazardously discarded. Choose the best way to handle medical waste:',
+                refinements: ['incineration', 'special disposal', 'autoclave'],
+                solutionVisual: () => {},
+                type: 'choice',
+                choices: [
+                    {text: 'Throw in household bin', score: 0},
+                    {text: 'Recycle like plastic', score: 1},
+                    {text: 'Use specialized medical waste disposal services with incineration or autoclaving', score: 2},
+                    {text: 'Bury it', score: 0}
+                ]
+            }
+        ];
+
+        // Make the plastic garbage obstacle triple the player's size
+        function resizeGarbageRelativeToPlayer() {
+            const plastic = problems.find(p => p.id === 'plastic_waste');
+            if (!plastic) return;
+            // If image is available, preserve its aspect ratio using the image's natural bounds
+            if (obstacleImages.plastic_waste.loaded) {
+                const img = obstacleImages.plastic_waste.image;
+                const aspect = (img.width || 1) / (img.height || 1);
+                const desiredHeight = Math.max(20, Math.round(player.height * 3));
+                // Cap so it doesn't eat the whole screen
+                const maxHeight = Math.floor(canvas.height * 0.75);
+                const maxWidth = Math.floor(canvas.width * 0.5);
+                const finalHeight = Math.min(desiredHeight, maxHeight);
+                const finalWidth = Math.min(Math.max(20, Math.round(finalHeight * aspect)), maxWidth);
+                plastic.width = finalWidth;
+                plastic.height = finalHeight;
+            } else {
+                // Fallback: scale both dimensions 3× player while awaiting image
+                const desiredHeight = Math.max(20, Math.round(player.height * 3));
+                const maxHeight = Math.floor(canvas.height * 0.75);
+                const finalHeight = Math.min(desiredHeight, maxHeight);
+                plastic.height = finalHeight;
+                plastic.width = Math.max(20, Math.round(finalHeight * 1.2)); // rough aspect guard while image loads
+            }
+            // Anchor to ground so it doesn't look like it's floating or sunk
+            plastic.y = groundY - plastic.height;
+        }
+
+        // Initial sizing (will be corrected again once sprites load)
+        resizeGarbageRelativeToPlayer();
+
+        // Bots (enemies) - Idle until detect, then chase and attack (3 HP)
+        const bots = [
+            {x: 1000, y: groundY - 64, width: 64, height: 64, speed: 1.0, health: 3, state: 'idle', direction: 1, detectionRange: 260, lastAttackTime: 0, attackCooldown: 800},
+            {x: 2000, y: groundY - 64, width: 64, height: 64, speed: 1.0, health: 3, state: 'idle', direction: -1, detectionRange: 260, lastAttackTime: 0, attackCooldown: 800},
+            {x: 3000, y: groundY - 64, width: 64, height: 64, speed: 1.0, health: 3, state: 'idle', direction: 1, detectionRange: 260, lastAttackTime: 0, attackCooldown: 800},
+            {x: 4000, y: groundY - 64, width: 64, height: 64, speed: 1.0, health: 3, state: 'idle', direction: -1, detectionRange: 260, lastAttackTime: 0, attackCooldown: 800},
+            {x: 5000, y: groundY - 64, width: 64, height: 64, speed: 1.0, health: 3, state: 'idle', direction: 1, detectionRange: 260, lastAttackTime: 0, attackCooldown: 800},
+            {x: 6000, y: groundY - 64, width: 64, height: 64, speed: 1.0, health: 3, state: 'idle', direction: -1, detectionRange: 260, lastAttackTime: 0, attackCooldown: 800},
+            {x: 7000, y: groundY - 64, width: 64, height: 64, speed: 1.0, health: 3, state: 'idle', direction: 1, detectionRange: 260, lastAttackTime: 0, attackCooldown: 800},
+            {x: 8000, y: groundY - 64, width: 64, height: 64, speed: 1.0, health: 3, state: 'idle', direction: -1, detectionRange: 260, lastAttackTime: 0, attackCooldown: 800}
+        ];
+
+        // Weapons on ground
+        const weapons = [
+            {x: 120, y: groundY - 20, width: 20, height: 20, picked: false},
+            {x: 1500, y: groundY - 20, width: 20, height: 20, picked: false},
+            {x: 2500, y: groundY - 20, width: 20, height: 20, picked: false},
+            {x: 3500, y: groundY - 20, width: 20, height: 20, picked: false},
+            {x: 4500, y: groundY - 20, width: 20, height: 20, picked: false}
+        ];
+
+        // Keyboard controls
+        const keys = {};
+        document.addEventListener('keydown', (e) => { 
+            const k = e.key && e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            keys[k] = true; 
+            if (k === 'ArrowRight') player.facingRight = true;
+            if (k === 'ArrowLeft') player.facingRight = false;
+        });
+        document.addEventListener('keyup', (e) => { 
+            const k = e.key && e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            keys[k] = false; 
+        });
+
+        // Check collision
+        function checkCollision(a, b) {
+            return a.x + a.width > b.x && a.x < b.x + b.width && a.y + a.height > b.y && a.y < b.y + b.height;
+        }
+
+        // Check proximity for weapon pickup
+        function checkProximity(a, b, distance) {
+            const dx = (a.x + a.width / 2) - (b.x + b.width / 2);
+            const dy = (a.y + a.height / 2) - (b.y + b.height / 2);
+            return Math.sqrt(dx * dx + dy * dy) < distance;
+        }
+
+        // Game loop
+        function update() {
+            if (levelCompleted || player.health <= 0) {
+                if (player.health <= 0) gameOver.style.display = 'flex';
+                return;
+            }
+
+            // Player movement
+            let newX = player.x;
+            let newY = player.y;
+
+            if (keys['ArrowLeft'] && player.x > 0 && !player.isDodging) newX -= player.speed;
+            if (keys['ArrowRight'] && player.x < levelWidth - player.width && !player.isDodging) newX += player.speed;
+            if (keys[' '] && (!player.jumping || player.doubleJumpAvailable) && !player.isDodging && !currentProblem) {
+                player.velocityY = -player.jumpPower;
+                if (player.jumping) player.doubleJumpAvailable = false;
+                player.jumping = true;
+            }
+            if (keys['k'] && player.hasWeapon && Date.now() - lastShotTime > shotCooldown && !player.isDodging && !currentProblem) {
+                projectiles.push({
+                    x: player.x + (player.facingRight ? player.width : 0),
+                    y: player.y + player.height / 2,
+                    width: 10,
+                    height: 5,
+                    speed: player.facingRight ? 8 : -8
+                });
+                lastShotTime = Date.now();
+            }
+            if (keys['d'] && !player.isDodging && Date.now() - player.lastDodgeTime > dodgeCooldown && !currentProblem) {
+                player.isDodging = true;
+                player.invulnerable = true;
+                player.lastDodgeTime = Date.now();
+                newX += player.facingRight ? 100 : -100;
+                setTimeout(() => {
+                    player.isDodging = false;
+                    player.invulnerable = false;
+                }, dodgeDuration);
+            }
+            if (keys['f'] && Date.now() - player.lastPushTime > pushCooldown && !currentProblem) {
+                player.lastPushTime = Date.now();
+                bots.forEach(b => {
+                    if (b.health > 0 && Math.abs(b.x - player.x) < 100 && Math.abs(b.y - player.y) < 50) {
+                        b.x += (b.x > player.x ? 100 : -100);
+                    }
+                });
+            }
+            if (keys['s'] && !player.hasWeapon && !currentProblem) {
+                weapons.forEach(w => {
+                    if (!w.picked && checkProximity(player, w, 80)) {
+                        player.hasWeapon = true;
+                        w.picked = true;
+                    }
+                });
+            }
+
+            // Gravity
+            player.velocityY += 0.35;
+            newY += player.velocityY;
+            if (newY + player.height > groundY) {
+                newY = groundY - player.height;
+                player.velocityY = 0;
+                player.jumping = false;
+                player.doubleJumpAvailable = true;
+            }
+
+            // Keep obstacle bottoms on ground
+            const plastic = problems.find(p => p.id === 'plastic_waste');
+            if (plastic) plastic.y = groundY - plastic.height;
+            const food = problems.find(p => p.id === 'food_waste');
+            if (food) food.y = groundY - food.height;
+
+            // Check obstacle collision for player
+            let collidedProblem = null;
+            for (let p of problems) {
+                if (!solvedProblems.has(p.id) && checkCollision({x: newX, y: newY, width: player.width, height: player.height}, p)) {
+                    collidedProblem = p;
+                    break;
+                }
+            }
+            if (!collidedProblem) {
+                player.x = newX;
+                player.y = newY;
+            } else if (!currentProblem && !solvedProblems.has(collidedProblem.id)) {
+                currentProblem = collidedProblem;
+                tries = 2;
+                showInteractionBox(collidedProblem);
+            }
+
+            // Bot behavior: idle until detecting player, then chase and attack
+            bots.forEach(b => {
+                if (b.health <= 0) return;
+                const dx = player.x - b.x;
+                const distance = Math.abs(dx);
+                // State transitions
+                if (distance <= (b.detectionRange || 250)) {
+                    b.state = 'chase';
+                    b.direction = dx > 0 ? 1 : -1;
+                } else {
+                    b.state = 'idle';
+                }
+                // Movement
+                if (b.state === 'chase' && !currentProblem) {
+                    const proposedX = b.x + (b.speed || 1) * b.direction;
+                    let blocked = false;
+                    for (let p of problems) {
+                        if (!solvedProblems.has(p.id) && checkCollision({x: proposedX, y: b.y, width: b.width, height: b.height}, p)) {
+                            blocked = true; break;
+                        }
+                    }
+                    if (!blocked && proposedX >= 0 && proposedX <= levelWidth - b.width) {
+                        b.x = proposedX;
+                    }
+                }
+                // Attack when overlapping
+                if (!player.invulnerable && checkCollision(player, b)) {
+                    b.state = 'attack';
+                    const cooldown = b.attackCooldown || 800;
+                    if (Date.now() - b.lastAttackTime > cooldown) {
+                        player.health = Math.max(0, player.health - 1);
+                        // Small knockback
+                        player.x += (player.x > b.x ? 40 : -40);
+                        b.lastAttackTime = Date.now();
+                    }
+                }
+            });
+
+            // Projectile movement and bot hit
+            projectiles = projectiles.filter(p => {
+                p.x += p.speed;
+                if (p.x < 0 || p.x > levelWidth) return false;
+                for (let b of bots) {
+                    if (b.health > 0 && checkCollision(p, b)) {
+                        // Each projectile hit reduces bot HP by 1
+                        b.health = Math.max(0, b.health - 1);
+                        // Consume weapon if a bot is destroyed by projectile
+                        if (b.health <= 0 && player.hasWeapon) {
+                            player.hasWeapon = false;
+                        }
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            // Camera
+            cameraX = Math.max(0, Math.min(player.x - canvas.width / 2 + player.width / 2, levelWidth - canvas.width));
+
+            // Draw
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Draw background with parallax before world transform
+            ctx.imageSmoothingEnabled = false;
+            if (background.loaded) {
+                const img = background.image;
+                const scale = canvas.height / img.height;
+                const bgW = Math.ceil(img.width * scale);
+                const offsetX = -Math.floor((cameraX * background.parallax) % bgW);
+                for (let x = offsetX; x < canvas.width; x += bgW) {
+                    ctx.drawImage(img, 0, 0, img.width, img.height, x, 0, bgW, canvas.height);
+                }
+            } else {
+                // Fallback solid background color while loading
+                ctx.fillStyle = '#4a5568';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            ctx.save();
+            ctx.translate(-cameraX, 0);
+            // Ensure pixel-art crispness
+            ctx.imageSmoothingEnabled = false;
+            ctx.fillStyle = 'rgba(0, 100, 0, 0.3)';
+            ctx.fillRect(0, groundY, levelWidth, canvas.height - groundY);
+            weapons.forEach(w => {
+                if (!w.picked) {
+                    ctx.fillStyle = 'gold';
+                    ctx.fillRect(w.x, w.y, w.width, w.height);
+                }
+            });
+            // Advance bot animation (global)
+            const nowBot = performance.now();
+            const activeSpeed = botSprite.attack.loaded ? botSprite.attack.speed : (botSprite.walk.loaded ? botSprite.walk.speed : botSprite.idle.speed);
+            const activeFrames = botSprite.attack.loaded ? botSprite.attack.frames : (botSprite.walk.loaded ? botSprite.walk.frames : botSprite.idle.frames);
+            botSprite.frameTimer += nowBot - lastFrameTs; // reuse tick delta
+            if (botSprite.frameTimer >= activeSpeed) {
+                botSprite.frameTimer = 0;
+                botSprite.frameIndex = (botSprite.frameIndex + 1) % activeFrames;
+            }
+            bots.forEach(b => {
+                if (b.health > 0) {
+                    const useAttack = (b.state === 'attack' && botSprite.attack.loaded);
+                    const useWalk = (!useAttack && b.state === 'chase' && botSprite.walk.loaded);
+                    const anim = useAttack ? botSprite.attack : (useWalk ? botSprite.walk : botSprite.idle);
+                    if ((useAttack && botSprite.attack.loaded) || (useWalk && botSprite.walk.loaded) || (!useAttack && !useWalk && botSprite.idle.loaded)) {
+                        const sx = (botSprite.frameIndex % anim.frames) * anim.frameWidth;
+                        const sy = 0;
+                        ctx.save();
+                        if (b.direction === -1) {
+                            ctx.translate(b.x + b.width, b.y);
+                            ctx.scale(-1, 1);
+                        } else {
+                            ctx.translate(b.x, b.y);
+                        }
+                        ctx.drawImage(
+                            anim.image,
+                            sx, sy, anim.frameWidth, anim.frameHeight,
+                            0, 0, b.width, b.height
+                        );
+                        ctx.restore();
+                    } else {
+                        ctx.fillStyle = 'black';
+                        ctx.fillRect(b.x, b.y, b.width, b.height);
+                    }
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(`${b.state || 'idle'} HP:${b.health}`, b.x, b.y - 10);
+                }
+            });
+            problems.forEach(p => {
+                if (!solvedProblems.has(p.id)) {
+                    if (p.id === 'plastic_waste' && obstacleImages.plastic_waste.loaded) {
+                        const img = obstacleImages.plastic_waste.image;
+                        const srcX = 0;
+                        const srcY = plasticTrim.top;
+                        const srcW = img.width;
+                        const srcH = Math.max(1, img.height - plasticTrim.top - plasticTrim.bottom);
+                        // Preserve aspect ratio while fitting within p.width/p.height
+                        const aspect = srcW / srcH;
+                        let drawW = p.width;
+                        let drawH = Math.round(drawW / aspect);
+                        if (drawH > p.height) {
+                            drawH = p.height;
+                            drawW = Math.round(drawH * aspect);
+                        }
+                        const destX = Math.round(p.x + (p.width - drawW) / 2);
+                        const destY = groundY - drawH; // bottom aligned to ground
+                        ctx.drawImage(
+                            img,
+                            srcX, srcY, srcW, srcH,
+                            destX, destY, drawW, drawH
+                        );
+                    } else if (p.id === 'food_waste' && obstacleImages.food_waste.loaded) {
+                        const img = obstacleImages.food_waste.image;
+                        const srcX = 0;
+                        const srcY = foodTrim.top;
+                        const srcW = img.width;
+                        const srcH = Math.max(1, img.height - foodTrim.top - foodTrim.bottom);
+                        const aspect = srcW / srcH;
+                        // Match size to obstacle 1 (plastic)
+                        const first = problems.find(pp => pp.id === 'plastic_waste');
+                        if (first) { p.width = first.width; p.height = first.height; p.y = groundY - p.height; }
+                        let drawW = p.width;
+                        let drawH = Math.round(drawW / aspect);
+                        if (drawH > p.height) { drawH = p.height; drawW = Math.round(drawH * aspect); }
+                        const destX = Math.round(p.x + (p.width - drawW) / 2);
+                        const destY = groundY - drawH;
+                        ctx.drawImage(img, srcX, srcY, srcW, srcH, destX, destY, drawW, drawH);
+                    } else if (p.id === 'e_waste' && obstacleImages.e_waste.loaded) {
+                        const img = obstacleImages.e_waste.image;
+                        const srcX = 0;
+                        const srcY = eWasteTrim.top;
+                        const srcW = img.width;
+                        const srcH = Math.max(1, img.height - eWasteTrim.top - eWasteTrim.bottom);
+                        const aspect = srcW / srcH;
+                        // Match size to obstacle 1 (plastic)
+                        const first = problems.find(pp => pp.id === 'plastic_waste');
+                        if (first) { p.width = first.width; p.height = first.height; p.y = groundY - p.height; }
+                        let drawW = p.width;
+                        let drawH = Math.round(drawW / aspect);
+                        if (drawH > p.height) { drawH = p.height; drawW = Math.round(drawH * aspect); }
+                        const destX = Math.round(p.x + (p.width - drawW) / 2);
+                        const destY = groundY - drawH;
+                        ctx.drawImage(img, srcX, srcY, srcW, srcH, destX, destY, drawW, drawH);
+                    } else {
+                        ctx.fillStyle = p.id === 'plastic_waste' ? 'blue' : 
+                                       p.id === 'food_waste' ? 'brown' : 
+                                       p.id === 'e_waste' ? 'red' : 
+                                       p.id === 'paper_waste' ? 'gray' : 
+                                       p.id === 'glass_waste' ? 'cyan' : 
+                                       p.id === 'hazardous_waste' ? 'purple' : 
+                                       p.id === 'metal_waste' ? 'yellow' : 
+                                       p.id === 'textile_waste' ? 'pink' : 
+                                       p.id === 'organic_waste' ? 'darkgreen' : 'orange';
+                        ctx.fillRect(p.x, p.y, p.width, p.height);
+                    }
+                } else {
+                    p.solutionVisual();
+                }
+            });
+            // Decide animation state, and reset frame on change to avoid slicing issues
+            const prevAnim = player.animation;
+            if ((keys['ArrowLeft'] || keys['ArrowRight']) && !currentProblem && !player.isDodging) {
+                player.animation = 'run';
+            } else {
+                player.animation = 'idle';
+            }
+            if (player.animation !== prevAnim) {
+                sprite.frameIndex = 0;
+                sprite.frameTimer = 0;
+            }
+
+            // Draw player sprite (fallback to rect if sprite not ready)
+            if (sprite.ready) {
+                // Use requested animation if loaded, otherwise fallback to whatever is loaded
+                let anim = sprite.animations[player.animation];
+                if (player.animation === 'run' && !sprite.loaded.run && sprite.loaded.idle) anim = sprite.animations.idle;
+                if (player.animation === 'idle' && !sprite.loaded.idle && sprite.loaded.run) anim = sprite.animations.run;
+                if (!anim) anim = sprite.animations.idle;
+                sprite.frameInterval = anim.speed;
+                // Advance frames (animate both idle and run now that sizes are correct)
+                const now = performance.now();
+                const dt = now - lastFrameTs;
+                lastFrameTs = now;
+                sprite.frameTimer += dt;
+                if (sprite.frameTimer >= sprite.frameInterval) {
+                    sprite.frameTimer = 0;
+                    sprite.frameIndex = (sprite.frameIndex + 1) % Math.max(1, anim.frames);
+                }
+                // Determine source frame size. Prefer explicit overrides if provided.
+                const nW = anim.image.naturalWidth || anim.image.width || 0;
+                const nH = anim.image.naturalHeight || anim.image.height || 0;
+                let frameWidth = anim.frameWidth || (nW && anim.frames ? Math.round(nW / anim.frames) : 0);
+                let frameHeight = anim.frameHeight || nH || 0;
+                if (!frameWidth || !frameHeight) {
+                    // Safe fallback if something is off with the image
+                    ctx.fillStyle = '#00cc00';
+                    ctx.fillRect(player.x, player.y, player.width, player.height);
+                } else {
+                let sx, sy;
+                if (anim.rects && anim.rects.length > 0) {
+                    const r = anim.rects[sprite.frameIndex % anim.rects.length];
+                    sx = r.x; sy = r.y; frameWidth = r.w; frameHeight = r.h;
+                } else {
+                    // Guard if strip width is not exactly divisible by frame count
+                    if (nW && anim.frames && nW % anim.frames !== 0) {
+                        console.warn('Sprite strip width not divisible by frames:', { nW, frames: anim.frames, frameWidthComputed: frameWidth, anim: player.animation });
+                    }
+                    sx = sprite.frameIndex * frameWidth;
+                    if (nW && sx + frameWidth > nW) sx = Math.max(0, nW - frameWidth);
+                    sy = 0;
+                }
+                const dw = player.width;
+                const dh = player.height;
+                // Flip if facing left
+                ctx.save();
+                if (!player.facingRight) {
+                    ctx.translate(player.x + dw, player.y);
+                    ctx.scale(-1, 1);
+                } else {
+                    ctx.translate(player.x, player.y);
+                }
+                ctx.drawImage(
+                    anim.image,
+                    sx, sy, frameWidth, frameHeight,
+                    0, 0, dw, dh
+                );
+                ctx.restore();
+                }
+            } else {
+                ctx.fillStyle = player.isDodging ? '#ff00ff' : (Date.now() - player.lastPushTime < 200 ? '#00ffff' : (Date.now() - player.lastJumpOnBotTime < 200 ? '#ffff00' : (player.animation === 'idle' ? '#00ff00' : '#00cc00')));
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+                ctx.fillStyle = 'white';
+                ctx.fillText('Prakruti', player.x, player.y - 10);
+            }
+            projectiles.forEach(p => {
+                ctx.fillStyle = 'red';
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+            });
+            ctx.restore();
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Seeds: ${seeds}`, 10, 30);
+            ctx.fillText(`Health: ${player.health}`, 10, 60);
+            ctx.fillText(`Weapon: ${player.hasWeapon ? 'Yes' : 'No'}`, 10, 90);
+            ctx.fillText(`Push: ${Date.now() - player.lastPushTime > pushCooldown ? 'Ready' : 'Cooldown'}`, 10, 120);
+            ctx.fillText(`Dodge: ${Date.now() - player.lastDodgeTime > dodgeCooldown ? 'Ready' : 'Cooldown'}`, 10, 150);
+            if (!sprite.ready) {
+                ctx.fillStyle = 'red';
+                ctx.font = '14px Arial';
+                ctx.fillText('Loading sprites… (check assets paths if this persists)', 10, 180);
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        // Interaction box
+        function showInteractionBox(problem) {
+            interactionBox.style.display = 'block';
+            problemDescription.textContent = problem.description;
+            triesRemaining.textContent = `Tries remaining: ${tries}`;
+            choicesContainer.innerHTML = '';
+            solutionInput.style.display = 'none';
+            submitButton.style.display = 'none';
+
+            if (problem.type === 'text') {
+                solutionInput.style.display = 'block';
+                submitButton.style.display = 'block';
+                solutionInput.focus();
+                submitButton.onclick = handleTextSubmit(problem);
+            } else if (problem.type === 'choice') {
+                problem.choices.forEach((choice, index) => {
+                    const button = document.createElement('button');
+                    button.classList.add('choice-button');
+                    button.textContent = choice.text;
+                    button.onclick = () => handleChoiceSubmit(problem, choice.score);
+                    choicesContainer.appendChild(button);
+                });
+            }
+        }
+
+        function handleTextSubmit(problem) {
+            return () => {
+                const solution = solutionInput.value.toLowerCase();
+                const isCorrect = problem.refinements.some(ref => solution.includes(ref));
+                if (isCorrect) {
+                    solvedProblems.add(problem.id);
+                    seeds += 1;
+                    closeInteractionBox();
+                    checkLevelComplete();
+                } else {
+                    handleIncorrect(problem);
+                }
+            };
+        }
+
+        function handleChoiceSubmit(problem, score) {
+            if (score > 0) {
+                solvedProblems.add(problem.id);
+                seeds += score;
+                closeInteractionBox();
+                checkLevelComplete();
+            } else {
+                handleIncorrect(problem);
+            }
+        }
+
+        function handleIncorrect(problem) {
+            tries--;
+            if (tries > 0) {
+                problemDescription.textContent = `Try again! Hint: ${problem.refinements.join(', ')}`;
+                triesRemaining.textContent = `Tries remaining: ${tries}`;
+                if (problem.type === 'text') {
+                    solutionInput.value = '';
+                }
+            } else {
+                problemDescription.textContent = `No tries left! Correct answers: ${problem.refinements.join(', ')}.`;
+                solvedProblems.add(problem.id);
+                seeds += 1;
+                setTimeout(() => {
+                    closeInteractionBox();
+                    checkLevelComplete();
+                }, 2000);
+            }
+        }
+
+        function closeInteractionBox() {
+            interactionBox.style.display = 'none';
+            solutionInput.value = '';
+            currentProblem = null;
+            tries = 2;
+        }
+
+        function checkLevelComplete() {
+            if (solvedProblems.size === problems.length) {
+                badgeNotification.style.display = 'block';
+                setTimeout(() => {
+                    badgeNotification.style.display = 'none';
+                    levelCompleted = true;
+                    endScreen.style.display = 'flex';
+                    seedsEarned.textContent = `Seeds Earned: ${seeds}`;
+                }, 3000);
+            }
+        }
+
+        // Start game
+        update();
+    </script>
+</body>
+</html>
+             
